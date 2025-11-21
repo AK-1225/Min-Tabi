@@ -36,6 +36,16 @@ const BoardColumn = ({ column, cards, onMemoChange, onDateChange, onCardClick }:
               type="date"
               value={column.dateValue || ''}
               onChange={(e) => onDateChange(column.id, e.target.value)}
+              /* --- ↓↓↓ ここを追加・修正しました ↓↓↓ --- */
+              onClick={(e) => {
+                try {
+                  // PCでもクリック時にカレンダーを強制的に開く
+                  (e.currentTarget as HTMLInputElement).showPicker();
+                } catch (err) {
+                  // showPicker未対応ブラウザの場合は何もしない
+                }
+              }}
+              /* --- ↑↑↑ ここまで ↑↑↑ --- */
               className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
             />
           </label>

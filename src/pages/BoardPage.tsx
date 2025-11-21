@@ -22,7 +22,7 @@ import {
   sortableKeyboardCoordinates,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
-import { MapPin, Plus, Utensils, Loader2, Layout } from 'lucide-react';
+import { MapPin, Plus, Utensils, Loader2, Layout, Edit3 } from 'lucide-react';
 
 // Import Types & Components
 import { CardType, DayColumn } from '../types';
@@ -36,7 +36,7 @@ export default function BoardPage() {
   const navigate = useNavigate();
   
   // --- State Management ---
-  const [planTitle, setPlanTitle] = useState('読み込み中...');
+  const [planTitle, setPlanTitle] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
   const [cards, setCards] = useState<CardType[]>([]);
   const [days, setDays] = useState<DayColumn[]>([]);
@@ -52,18 +52,25 @@ export default function BoardPage() {
   useEffect(() => {
     if (!planId) return;
 
-    // Firestoreのデータをリアルタイム監視
     const unsubscribe = onSnapshot(doc(db, 'plans', planId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setPlanTitle(data.title);
-        // ローカルで編集中(ドラッグ中など)は更新をスキップする制御も可能だが、
-        // MVPではシンプルに常に最新を受け取る（自分が操作した結果もここから返ってくる）
+        // 自分が編集中（フォーカス中）でない場合のみタイトルを更新する等の制御が理想だが
+        // MVPなのでDB優先で更新する（入力中に他人が変えると上書きされる挙動になる点に注意）
+        if (document.activeElement?.id !== 'plan-title-input') {
+            setPlanTitle(data.title);
+        }
         setCards(data.cards || []);
         setDays(data.days || []);
         setIsLoading(false);
+        
+        // 履歴のタイトルも更新しておく
+        const history = JSON.parse(localStorage.getItem('mintabi_history') || '[]');
+        const newHistory = history.map((h: any) => h.id === planId ? { ...h, title: data.title } : h);
+        localStorage.setItem('mintabi_history', JSON.stringify(newHistory));
+
       } else {
-        alert('このプランは見つかりませんでした');
+        alert('このプランは見つかりませんでした（削除された可能性があります）');
         navigate('/');
       }
     }, (error) => {
@@ -71,18 +78,16 @@ export default function BoardPage() {
       setIsLoading(false);
     });
 
-    // 履歴の更新(タイトルが変わったとき用)
     return () => unsubscribe();
   }, [planId, navigate]);
 
   // --- Auto Save Function ---
-  const saveToDb = useCallback(async (newCards: CardType[], newDays: DayColumn[]) => {
+  const saveToDb = useCallback(async (data: { cards?: CardType[], days?: DayColumn[], title?: string }) => {
     if (!planId) return;
     setIsSaving(true);
     try {
       await updateDoc(doc(db, 'plans', planId), {
-        cards: newCards,
-        days: newDays,
+        ...data,
         updatedAt: serverTimestamp()
       });
     } catch (err) {
@@ -108,6 +113,14 @@ export default function BoardPage() {
   const getCardsForColumn = (colId: string) => cards.filter(c => c.columnId === colId);
 
   // --- Handlers ---
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPlanTitle(e.target.value);
+  };
+
+  const handleTitleBlur = () => {
+    saveToDb({ title: planTitle });
+  };
+
   const handleDateChange = (id: string, dateVal: string) => {
     const newDays = days.map(d => {
       if (d.id !== id) return d;
@@ -117,8 +130,8 @@ export default function BoardPage() {
       const label = `${dateObj.getMonth() + 1}/${dateObj.getDate()}(${weekDays[dateObj.getDay()]})`;
       return { ...d, dateLabel: label, dateValue: dateVal };
     });
-    setDays(newDays); // 即時反映
-    saveToDb(cards, newDays); // 保存
+    setDays(newDays);
+    saveToDb({ cards, days: newDays });
   };
 
   const handleMemoChange = (id: string, val: string) => {
@@ -126,21 +139,20 @@ export default function BoardPage() {
     setDays(newDays);
   };
 
-  // メモなどの入力完了時（フォーカスが外れたとき）に保存
   const handleBlur = () => {
-    saveToDb(cards, days);
+    saveToDb({ cards, days });
   };
 
   const handleCardSave = (updatedCard: CardType) => {
     const newCards = cards.map(c => c.id === updatedCard.id ? updatedCard : c);
     setCards(newCards);
-    saveToDb(newCards, days);
+    saveToDb({ cards: newCards, days });
   };
 
   const handleCardDelete = (cardId: string) => {
     const newCards = cards.filter(c => c.id !== cardId);
     setCards(newCards);
-    saveToDb(newCards, days);
+    saveToDb({ cards: newCards, days });
     if (isModalOpen) setIsModalOpen(false);
   };
 
@@ -186,11 +198,10 @@ export default function BoardPage() {
     setActiveId(null);
     if (!over) return;
 
-    // ゴミ箱処理
     if (over.id === 'trash') {
       const newCards = cards.filter(c => c.id !== active.id);
       setCards(newCards);
-      saveToDb(newCards, days);
+      saveToDb({ cards: newCards, days });
       return;
     }
 
@@ -203,11 +214,10 @@ export default function BoardPage() {
       if (oldIndex !== -1 && newIndex !== -1) {
          const newCards = arrayMove(cards, oldIndex, newIndex);
          setCards(newCards);
-         saveToDb(newCards, days); // 並び替え保存
+         saveToDb({ cards: newCards, days });
       }
     } else {
-      // カラム移動だけして元の位置に戻った場合も保存しておく（Overで更新されているため）
-      saveToDb(cards, days);
+      saveToDb({ cards, days });
     }
   };
 
@@ -237,18 +247,29 @@ export default function BoardPage() {
         
         {/* Header */}
         <header className="h-14 flex-shrink-0 bg-white/80 backdrop-blur-md shadow-sm flex items-center justify-between px-4 z-10 border-b border-orange-100/50">
-          <div className="flex items-center gap-3">
-            <button onClick={() => navigate('/')} className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition group">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <button onClick={() => navigate('/')} className="flex items-center gap-2 cursor-pointer hover:opacity-70 transition group flex-shrink-0">
               <div className="bg-gradient-to-tr from-orange-400 to-pink-400 text-white p-1.5 rounded-lg shadow-md shadow-orange-100 group-hover:scale-105 transition-transform">
                 <MapPin size={18} strokeWidth={2.5} />
               </div>
               <h1 className="font-bold text-lg tracking-tight text-stone-700 hidden md:block">みん旅</h1>
             </button>
-            <div className="h-6 w-px bg-stone-200 mx-1"></div>
-            <h2 className="font-bold text-stone-600 text-sm md:text-base truncate max-w-[150px] md:max-w-md">
-              {planTitle}
-            </h2>
-            {isSaving && <span className="text-[10px] text-stone-400 flex items-center gap-1"><Loader2 size={10} className="animate-spin"/>保存中</span>}
+            <div className="h-6 w-px bg-stone-200 mx-1 flex-shrink-0"></div>
+            
+            {/* 編集可能なタイトル */}
+            <div className="relative group flex-1 max-w-md">
+              <input 
+                id="plan-title-input"
+                type="text"
+                value={planTitle}
+                onChange={handleTitleChange}
+                onBlur={handleTitleBlur}
+                className="w-full bg-transparent font-bold text-stone-700 text-sm md:text-base px-2 py-1 rounded hover:bg-stone-100 focus:bg-white focus:ring-2 focus:ring-orange-200 outline-none transition-all truncate"
+              />
+              <Edit3 size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 opacity-0 group-hover:opacity-100 pointer-events-none" />
+            </div>
+
+            {isSaving && <span className="text-[10px] text-stone-400 flex-shrink-0 flex items-center gap-1"><Loader2 size={10} className="animate-spin"/>保存中</span>}
           </div>
 
           <div className="flex gap-2">
@@ -271,7 +292,7 @@ export default function BoardPage() {
                 };
                 const newCards = [...cards, newCard];
                 setCards(newCards);
-                saveToDb(newCards, days);
+                saveToDb({ cards: newCards, days });
                 setEditingCard(newCard);
                 setIsModalOpen(true);
               }}
@@ -335,7 +356,7 @@ export default function BoardPage() {
                       const newId = `day-${days.length}-${Date.now()}`;
                       const newDays = [...days, { id: newId, title: `${days.length + 1}日目`, dateLabel: '日付設定', dateValue: '', memo: '' }];
                       setDays(newDays);
-                      saveToDb(cards, newDays);
+                      saveToDb({ cards, days: newDays });
                     }}
                     className="w-12 h-full max-h-[400px] flex items-center justify-center rounded-xl border-2 border-dashed border-orange-200 text-orange-300 hover:text-orange-500 hover:border-orange-300 hover:bg-orange-50 transition-all flex-shrink-0"
                   >

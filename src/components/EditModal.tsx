@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImageIcon, X, Save, Upload, MapPin, Utensils, ExternalLink, Trash2 } from 'lucide-react';
+import { ImageIcon, X, Save, Upload, MapPin, Utensils, ExternalLink, Trash2, Link } from 'lucide-react';
 import { CardType } from '../types';
 
 interface EditModalProps {
@@ -30,18 +30,34 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
     }
   };
 
-  // ★追加: クリップボードからの貼り付け処理
-  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+  // ★改良: 画像データだけでなく、URLテキストのペーストも受け付ける
+  const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
+    let foundImage = false;
+
+    // 1. 画像ファイル（バイナリ）を探す (PCや一部Android用)
     for (const item of items) {
       if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
         if (file) {
           const objectUrl = URL.createObjectURL(file);
           setFormData(prev => ({ ...prev, imageUrl: objectUrl }));
-          e.preventDefault(); // デフォルトのペースト動作を防ぐ
+          foundImage = true;
+          e.preventDefault();
           return;
         }
+      }
+    }
+
+    // 2. テキスト（URL）を探す (スマホで「画像リンクをコピー」した場合など)
+    if (!foundImage) {
+      const text = e.clipboardData.getData('text');
+      // HTTPで始まり、かつ画像っぽいURL（簡易判定）またはDataURIなら採用
+      if (text && (text.startsWith('http') || text.startsWith('data:image'))) {
+        setFormData(prev => ({ ...prev, imageUrl: text }));
+        // URLの場合はinputへの入力を妨げない方が親切な場合もあるが、
+        // ここでは「画像設定」としてのペーストなのでpreventDefaultして反映する
+        e.preventDefault();
       }
     }
   };
@@ -62,9 +78,6 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           
           {/* 画像プレビュー & アップロード & ペーストエリア */}
-          {/* tabIndex={0} を追加してdivにフォーカスが当たるようにしています。
-             onPasteイベントを追加しています。
-          */}
           <div 
             ref={imageContainerRef}
             tabIndex={0}
@@ -86,12 +99,25 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
                 <Upload size={16} />
                 <span>クリックして選択</span>
               </div>
-              <span className="text-xs font-normal opacity-90">または Ctrl+V で貼り付け</span>
               <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
             </label>
           </div>
-          <p className="text-[10px] text-stone-400 text-right">
-            ※ 画像エリアをクリックしてから画像を貼り付け(Ctrl+V)できます
+
+          {/* ★追加: スマホ用ペースト入力欄 */}
+          <div className="relative">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none">
+              <Link size={14} />
+            </div>
+            <input
+              type="text"
+              placeholder="ここに画像のURLをペースト (スマホ用)"
+              onPaste={handlePaste}
+              // 入力されてもフォームデータには反映せず、ペーストイベントだけを拾って画像URLにする
+              className="w-full pl-9 pr-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-lg focus:ring-2 focus:ring-orange-200 outline-none placeholder:text-stone-400"
+            />
+          </div>
+          <p className="text-[10px] text-stone-400 text-right -mt-2">
+            ※ スマホでは「画像アドレスをコピー」してここに貼り付けてください
           </p>
 
           {/* タイトル */}

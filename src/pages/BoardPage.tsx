@@ -328,7 +328,7 @@ export default function BoardPage() {
             </div>
             <SortableContext items={stockCards.map(c => c.id)} strategy={rectSortingStrategy}>
               <div className="flex-1 p-4 overflow-y-auto">
-                <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-10">
+                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-10">
                   {stockCards.map((card) => (
                     <Card key={card.id} card={card} onClick={() => handleCardClick(card)} />
                   ))}

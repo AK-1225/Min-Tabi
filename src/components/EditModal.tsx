@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ImageIcon, X, Save, Upload, MapPin, Utensils, ExternalLink, Trash2, Link } from 'lucide-react';
+import { ImageIcon, X, Save, Upload, MapPin, Utensils, ExternalLink, Trash2, Link, Loader2 } from 'lucide-react';
 import { CardType } from '../types';
 
 interface EditModalProps {
@@ -10,8 +10,50 @@ interface EditModalProps {
   onDelete: (cardId: string) => void;
 }
 
+// ★追加: 画像を圧縮してBase64文字列に変換する関数
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        // 最大サイズを500pxに制限（容量削減のため）
+        const MAX_SIZE = 500;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height *= MAX_SIZE / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width *= MAX_SIZE / height;
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        // JPEG形式、品質0.7で圧縮してBase64化
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) => {
   const [formData, setFormData] = useState<CardType>(card);
+  const [isProcessing, setIsProcessing] = useState(false); // 画像処理中フラグ
   const imageContainerRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -22,15 +64,26 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
 
   if (!isOpen) return null;
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ファイル選択時の処理
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const objectUrl = URL.createObjectURL(file);
-      setFormData({ ...formData, imageUrl: objectUrl });
+      setIsProcessing(true);
+      try {
+        // 圧縮してBase64に変換
+        const base64Image = await compressImage(file);
+        setFormData({ ...formData, imageUrl: base64Image });
+      } catch (error) {
+        console.error("Image processing failed", error);
+        alert("画像の処理に失敗しました");
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent) => {
+  // ペースト時の処理
+  const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     let foundImage = false;
 
@@ -39,9 +92,16 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
       if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
         if (file) {
-          const objectUrl = URL.createObjectURL(file);
-          setFormData(prev => ({ ...prev, imageUrl: objectUrl }));
-          foundImage = true;
+          setIsProcessing(true);
+          try {
+            const base64Image = await compressImage(file);
+            setFormData(prev => ({ ...prev, imageUrl: base64Image }));
+            foundImage = true;
+          } catch (error) {
+            console.error("Paste processing failed", error);
+          } finally {
+            setIsProcessing(false);
+          }
           e.preventDefault();
           return;
         }
@@ -61,20 +121,13 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/30 backdrop-blur-sm animate-in fade-in duration-200"
-      /* ★修正ポイント: onClick を onMouseDown に変更 
-         e.target(実際に押した場所) が e.currentTarget(この背景div) と同じ場合のみ閉じる
-         これにより、中身をクリックしても閉じなくなります（stopPropagation不要）
-      */
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
         }
       }}
     >
-      <div 
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-orange-100"
-        /* 中身の onClick={stopPropagation} は不要になったので削除しました */
-      >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-orange-100">
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-orange-100 flex justify-between items-center bg-orange-50/50">
@@ -87,14 +140,19 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
         {/* Body */}
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           
-          {/* 画像プレビュー */}
+          {/* 画像プレビュー & アップロード & ペーストエリア */}
           <div 
             ref={imageContainerRef}
             tabIndex={0}
             onPaste={handlePaste}
             className="relative w-full h-40 bg-stone-100 rounded-xl overflow-hidden border-2 border-stone-200 border-dashed group outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 transition-all"
           >
-            {formData.imageUrl ? (
+            {isProcessing ? (
+              <div className="w-full h-full flex flex-col items-center justify-center text-orange-400">
+                <Loader2 size={32} className="animate-spin" />
+                <span className="text-xs mt-2 font-bold">画像を処理中...</span>
+              </div>
+            ) : formData.imageUrl ? (
               <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-stone-400 pointer-events-none">
@@ -103,13 +161,16 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
               </div>
             )}
             
-            <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity text-white font-bold text-sm gap-2 hover:opacity-100">
-              <div className="flex items-center gap-2">
-                <Upload size={16} />
-                <span>クリックして選択</span>
-              </div>
-              <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-            </label>
+            {/* オーバーレイラベル */}
+            {!isProcessing && (
+              <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity text-white font-bold text-sm gap-2 hover:opacity-100">
+                <div className="flex items-center gap-2">
+                  <Upload size={16} />
+                  <span>クリックして選択</span>
+                </div>
+                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+              </label>
+            )}
           </div>
 
           {/* スマホ用ペースト入力欄 */}
@@ -125,7 +186,7 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
             />
           </div>
           <p className="text-[10px] text-stone-400 text-right -mt-2">
-            ※ 画像をコピペするときは「画像アドレスをコピー」してここに貼り付けてください
+            ※ スマホでは「画像アドレスをコピー」してここに貼り付けてください
           </p>
 
           {/* タイトル */}
@@ -205,7 +266,8 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
             </button>
             <button 
               onClick={() => { onSave(formData); onClose(); }}
-              className="px-4 py-2 text-sm bg-orange-400 text-white font-bold rounded-lg hover:bg-orange-500 shadow-lg shadow-orange-200 transition-all flex items-center gap-1"
+              disabled={isProcessing}
+              className="px-4 py-2 text-sm bg-orange-400 text-white font-bold rounded-lg hover:bg-orange-500 shadow-lg shadow-orange-200 transition-all flex items-center gap-1 disabled:opacity-50"
             >
               <Save size={16} />
               保存する

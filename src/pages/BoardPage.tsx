@@ -55,6 +55,8 @@ export default function BoardPage() {
     const unsubscribe = onSnapshot(doc(db, 'plans', planId), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
+        
+        // タイトル更新（編集中以外）
         if (document.activeElement?.id !== 'plan-title-input') {
             setPlanTitle(data.title);
         }
@@ -62,8 +64,16 @@ export default function BoardPage() {
         setDays(data.days || []);
         setIsLoading(false);
         
+        // ★ここを変更: ページを開いただけで履歴に追加・更新する処理
         const history = JSON.parse(localStorage.getItem('mintabi_history') || '[]');
-        const newHistory = history.map((h: any) => h.id === planId ? { ...h, title: data.title } : h);
+        
+        // 1. 同じIDが既にあれば削除（重複防止＆先頭に持ってくるため）
+        const filteredHistory = history.filter((h: any) => h.id !== planId);
+        
+        // 2. 最新のタイトルで先頭に追加
+        const newHistory = [{ id: planId, title: data.title }, ...filteredHistory];
+        
+        // 3. 保存
         localStorage.setItem('mintabi_history', JSON.stringify(newHistory));
 
       } else {
@@ -305,7 +315,6 @@ export default function BoardPage() {
         <div className="flex-1 flex flex-col min-h-0">
           
           {/* Stock Area */}
-          {/* ★変更: h-[40%] を削除し、min-h, max-h を設定 */}
           <div className="flex-shrink-0 min-h-[200px] max-h-[50vh] bg-orange-50 flex flex-col border-b border-orange-200/50 shadow-[inset_0_-2px_4px_rgba(251,146,60,0.05)] transition-all duration-300 ease-in-out">
             <div className="px-4 py-2 flex items-center justify-between">
               <h2 className="text-sm font-bold text-stone-500 flex items-center gap-1">
@@ -319,7 +328,6 @@ export default function BoardPage() {
             </div>
             <SortableContext items={stockCards.map(c => c.id)} strategy={rectSortingStrategy}>
               <div className="flex-1 p-4 overflow-y-auto">
-                {/* ★変更: grid-cols-2 から grid-cols-3 に変更 */}
                 <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 pb-10">
                   {stockCards.map((card) => (
                     <Card key={card.id} card={card} onClick={() => handleCardClick(card)} />
@@ -336,7 +344,6 @@ export default function BoardPage() {
           </div>
 
           {/* Schedule Board */}
-          {/* ここは flex-1 なので、Stockエリアが縮めば自動で広がります */}
           <div className="flex-1 bg-orange-100/30 flex flex-col min-h-0 relative overflow-hidden">
               <div className="absolute inset-0 overflow-x-auto overflow-y-hidden">
                 <div className="h-full flex px-4 py-4 gap-4 min-w-max items-start">

@@ -30,12 +30,12 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
     }
   };
 
-  // ★改良: 画像データだけでなく、URLテキストのペーストも受け付ける
+  // 画像データだけでなく、URLテキストのペーストも受け付ける
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     let foundImage = false;
 
-    // 1. 画像ファイル（バイナリ）を探す (PCや一部Android用)
+    // 1. 画像ファイル（バイナリ）を探す
     for (const item of items) {
       if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
@@ -49,22 +49,25 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
       }
     }
 
-    // 2. テキスト（URL）を探す (スマホで「画像リンクをコピー」した場合など)
+    // 2. テキスト（URL）を探す
     if (!foundImage) {
       const text = e.clipboardData.getData('text');
-      // HTTPで始まり、かつ画像っぽいURL（簡易判定）またはDataURIなら採用
       if (text && (text.startsWith('http') || text.startsWith('data:image'))) {
         setFormData(prev => ({ ...prev, imageUrl: text }));
-        // URLの場合はinputへの入力を妨げない方が親切な場合もあるが、
-        // ここでは「画像設定」としてのペーストなのでpreventDefaultして反映する
         e.preventDefault();
       }
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/30 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-orange-100">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/30 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose} /* ← 追加: 背景クリックで閉じる */
+    >
+      <div 
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-orange-100"
+        onClick={(e) => e.stopPropagation()} /* ← 追加: 中身をクリックしたときは閉じないようにする */
+      >
         
         {/* Header */}
         <div className="px-6 py-4 border-b border-orange-100 flex justify-between items-center bg-orange-50/50">
@@ -103,7 +106,7 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
             </label>
           </div>
 
-          {/* ★追加: スマホ用ペースト入力欄 */}
+          {/* スマホ用ペースト入力欄 */}
           <div className="relative">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none">
               <Link size={14} />
@@ -112,7 +115,6 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
               type="text"
               placeholder="ここに画像のURLをペースト (スマホ用)"
               onPaste={handlePaste}
-              // 入力されてもフォームデータには反映せず、ペーストイベントだけを拾って画像URLにする
               className="w-full pl-9 pr-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-lg focus:ring-2 focus:ring-orange-200 outline-none placeholder:text-stone-400"
             />
           </div>

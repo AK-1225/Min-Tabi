@@ -30,7 +30,6 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
     }
   };
 
-  // 画像データだけでなく、URLテキストのペーストも受け付ける
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = e.clipboardData.items;
     let foundImage = false;
@@ -62,11 +61,19 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
   return (
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/30 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={onClose} /* ← 追加: 背景クリックで閉じる */
+      /* ★修正ポイント: onClick を onMouseDown に変更 
+         e.target(実際に押した場所) が e.currentTarget(この背景div) と同じ場合のみ閉じる
+         これにより、中身をクリックしても閉じなくなります（stopPropagation不要）
+      */
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div 
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-orange-100"
-        onClick={(e) => e.stopPropagation()} /* ← 追加: 中身をクリックしたときは閉じないようにする */
+        /* 中身の onClick={stopPropagation} は不要になったので削除しました */
       >
         
         {/* Header */}
@@ -80,7 +87,7 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
         {/* Body */}
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           
-          {/* 画像プレビュー & アップロード & ペーストエリア */}
+          {/* 画像プレビュー */}
           <div 
             ref={imageContainerRef}
             tabIndex={0}
@@ -96,7 +103,6 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
               </div>
             )}
             
-            {/* オーバーレイラベル */}
             <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity text-white font-bold text-sm gap-2 hover:opacity-100">
               <div className="flex items-center gap-2">
                 <Upload size={16} />
@@ -119,7 +125,7 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
             />
           </div>
           <p className="text-[10px] text-stone-400 text-right -mt-2">
-            ※ スマホでは「画像アドレスをコピー」してここに貼り付けてください
+            ※ 画像をコピペするときは「画像アドレスをコピー」してここに貼り付けてください
           </p>
 
           {/* タイトル */}

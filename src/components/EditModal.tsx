@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ImageIcon, X, Save, Upload, MapPin, Utensils, ExternalLink, Trash2 } from 'lucide-react';
 import { CardType } from '../types';
 
@@ -12,6 +12,7 @@ interface EditModalProps {
 
 const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) => {
   const [formData, setFormData] = useState<CardType>(card);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
     if (isOpen) {
@@ -26,6 +27,22 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
     if (file) {
       const objectUrl = URL.createObjectURL(file);
       setFormData({ ...formData, imageUrl: objectUrl });
+    }
+  };
+
+  // ★追加: クリップボードからの貼り付け処理
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData.items;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          const objectUrl = URL.createObjectURL(file);
+          setFormData(prev => ({ ...prev, imageUrl: objectUrl }));
+          e.preventDefault(); // デフォルトのペースト動作を防ぐ
+          return;
+        }
+      }
     }
   };
 
@@ -44,22 +61,38 @@ const EditModal = ({ card, isOpen, onClose, onSave, onDelete }: EditModalProps) 
         {/* Body */}
         <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           
-          {/* 画像プレビュー & アップロード */}
-          <div className="relative w-full h-40 bg-stone-100 rounded-xl overflow-hidden border border-stone-200 group">
+          {/* 画像プレビュー & アップロード & ペーストエリア */}
+          {/* tabIndex={0} を追加してdivにフォーカスが当たるようにしています。
+             onPasteイベントを追加しています。
+          */}
+          <div 
+            ref={imageContainerRef}
+            tabIndex={0}
+            onPaste={handlePaste}
+            className="relative w-full h-40 bg-stone-100 rounded-xl overflow-hidden border-2 border-stone-200 border-dashed group outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 transition-all"
+          >
             {formData.imageUrl ? (
               <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-stone-400">
+              <div className="w-full h-full flex flex-col items-center justify-center text-stone-400 pointer-events-none">
                 <ImageIcon size={32} />
-                <span className="text-xs mt-2">画像なし</span>
+                <span className="text-xs mt-2 font-medium">画像なし</span>
               </div>
             )}
-            <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity text-white font-bold text-sm gap-2">
-              <Upload size={16} />
-              画像を変更
+            
+            {/* オーバーレイラベル */}
+            <label className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity text-white font-bold text-sm gap-2 hover:opacity-100">
+              <div className="flex items-center gap-2">
+                <Upload size={16} />
+                <span>クリックして選択</span>
+              </div>
+              <span className="text-xs font-normal opacity-90">または Ctrl+V で貼り付け</span>
               <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
             </label>
           </div>
+          <p className="text-[10px] text-stone-400 text-right">
+            ※ 画像エリアをクリックしてから画像を貼り付け(Ctrl+V)できます
+          </p>
 
           {/* タイトル */}
           <div>
